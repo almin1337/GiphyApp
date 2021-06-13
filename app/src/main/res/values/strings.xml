@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">GIPHY</string>
+    <string name="logo_str">Giphy Logo</string>
+    <string name="search_gif_str">Search GIF</string>
+    <string name="search_logo">Search Logo</string>
+    <string name="gif_str">GIF</string>
+</resources>
