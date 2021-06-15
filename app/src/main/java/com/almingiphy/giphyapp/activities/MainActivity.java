@@ -131,12 +131,12 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
                         swipeRefreshLayout.setVisibility(View.VISIBLE);
                         swipeRefreshLayout.setRefreshing(false);
 
-                        if (giphyModel.getData().size() < GIFS_LIMIT) {
-                            return;
-                        }
-                        if (giphyModel.getData().isEmpty()) {
+                        if (giphyModel.getData().isEmpty() && offset == 0)
                             noGifs.setVisibility(View.VISIBLE);
-                        }
+                        else
+                            noGifs.setVisibility(View.GONE);
+
+                        if (giphyModel.getData().size() < GIFS_LIMIT) return;
 
                         gifAdapter.addAll(giphyModel.getData());
                         offset += giphyModel.getData().size();

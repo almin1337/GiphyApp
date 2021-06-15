@@ -51,6 +51,8 @@
         android:textSize="16sp"
         android:textColor="@color/white"
         android:layout_centerInParent="true"
+        android:gravity="center"
+        android:layout_margin="20dp"
         android:visibility="gone"/>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout

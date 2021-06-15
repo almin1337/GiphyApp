@@ -2,6 +2,7 @@ package com.almingiphy.giphyapp.adapters;
 
 import android.app.Activity;
 import android.app.Dialog;
+import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -9,12 +10,17 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.almingiphy.giphyapp.R;
 import com.almingiphy.giphyapp.data.model.data.Data;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.DataSource;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.Target;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,9 +95,22 @@ public class GIFAdapter extends RecyclerView.Adapter<GIFAdapter.ViewHolder> {
 
         ImageView gifImageFullScreen = fullscreenDialog.findViewById(R.id.gif_image_full_screen);
         ProgressBar progressBar = fullscreenDialog.findViewById(R.id.progress_bar_popup);
-        progressBar.setVisibility(View.VISIBLE);
 
-        Glide.with(activity).load(gifUrl).apply(RequestOptions.fitCenterTransform()).into(gifImageFullScreen);
+        Glide.with(activity).load(gifUrl)
+                .listener(new RequestListener<Drawable>() {
+                    @Override
+                    public boolean onLoadFailed(@Nullable GlideException e, Object model, Target<Drawable> target, boolean isFirstResource) {
+                        progressBar.setVisibility(View.GONE);
+                        return false;
+                    }
+
+                    @Override
+                    public boolean onResourceReady(Drawable resource, Object model, Target<Drawable> target, DataSource dataSource, boolean isFirstResource) {
+                        progressBar.setVisibility(View.GONE);
+                        return false;
+                    }
+                })
+                .apply(RequestOptions.fitCenterTransform()).into(gifImageFullScreen);
 
         gifImageFullScreen.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -99,8 +118,6 @@ public class GIFAdapter extends RecyclerView.Adapter<GIFAdapter.ViewHolder> {
                 fullscreenDialog.dismiss();
             }
         });
-
-        progressBar.setVisibility(View.GONE);
 
         fullscreenDialog.show();
     }
