@@ -2,19 +2,19 @@ package com.almingiphy.giphyapp.activities;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -25,27 +25,31 @@ import com.almingiphy.giphyapp.R;
 import com.almingiphy.giphyapp.adapters.GIFAdapter;
 import com.almingiphy.giphyapp.app.GiphyApp;
 import com.almingiphy.giphyapp.data.model.GiphyModel;
-import com.almingiphy.giphyapp.listeners.PaginationScrollListener;
 import com.almingiphy.giphyapp.utils.APIUtils;
 import com.almingiphy.giphyapp.utils.Constants;
 import com.google.gson.Gson;
+import com.jakewharton.rxbinding.widget.RxTextView;
+
+import java.util.concurrent.TimeUnit;
 
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
+import rx.android.schedulers.AndroidSchedulers;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SwipeRefreshLayout.OnRefreshListener {
 
     private static final String TAG = "MainActivity";
-    private static final String GIPHY = "giphy";
-    private static final Integer GIFS_LIMIT = 11;
+    private static final Integer GIFS_LIMIT = 10;
 
     private GiphyModel giphyModel;
     private GIFAdapter gifAdapter;
-    private RecyclerView recyclerView;
+    private SwipeRefreshLayout swipeRefreshLayout;
+    private TextView noGifs;
+    private EditText searchMenu;
     private ProgressBar progressBar;
-    private boolean isLoading, isLastPage;
     private Integer offset = 0;
+    private Call<GiphyModel> call;
 
     public static Intent createIntent(Context context) {
         Intent intent = new Intent(context, MainActivity.class);
@@ -54,22 +58,19 @@ public class MainActivity extends AppCompatActivity {
         return intent;
     }
 
-    public static Intent createIntent(Context context, GiphyModel giphyModel) { //NE TREBA???????????????
-        Intent intent = new Intent(context, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        intent.putExtra(GIPHY, giphyModel);
-        return intent;
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        progressBar = findViewById(R.id.progress_bar);
+        swipeRefreshLayout = findViewById(R.id.swipe_container);
+        swipeRefreshLayout.setOnRefreshListener(this);
+        swipeRefreshLayout.setVisibility(View.GONE);
 
-        EditText searchMenu = findViewById(R.id.search_menu);
+        progressBar = findViewById(R.id.progress_bar);
+        noGifs = findViewById(R.id.no_gifs);
+
+        searchMenu = findViewById(R.id.search_menu);
         searchMenu.setEnabled(true);
         searchMenu.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
@@ -80,85 +81,66 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        searchMenu.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-
-            }
-
-            @Override
-            public void onTextChanged(CharSequence s, int i, int i1, int i2) {
-            }
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                if (s.toString().length() > 3) {
-//                    filterCity(s.toString());
-                    recyclerView.setVisibility(View.VISIBLE);
-                } else {
-                    gifAdapter = new GIFAdapter(MainActivity.this);
-                    recyclerView.setAdapter(gifAdapter);
-                    recyclerView.setVisibility(View.INVISIBLE);
-                }
-            }
-        });
-
+        gifAdapter = new GIFAdapter(MainActivity.this);
         GridLayoutManager gridLayoutManager = new GridLayoutManager(this, 2, GridLayoutManager.VERTICAL, false);
-        recyclerView = findViewById(R.id.recycler_gifs);
-//        recyclerView.setHasFixedSize(true);
-//        recyclerView.setNestedScrollingEnabled(false);
-        gifAdapter = new GIFAdapter(this);
+        RecyclerView recyclerView = findViewById(R.id.recycler_gifs);
         recyclerView.setLayoutManager(gridLayoutManager);
         recyclerView.setAdapter(gifAdapter);
-        recyclerView.addOnScrollListener(new PaginationScrollListener(gridLayoutManager) {
-            @Override
-            protected void loadMoreItems() {
-                isLoading = true;
-                loadMoreGIFs();
-            }
+        setupUI(recyclerView);
 
+        recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
-            public boolean isLastPage() {
-                return isLastPage;
-            }
-
-            @Override
-            public boolean isLoading() {
-                return isLoading;
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                super.onScrolled(recyclerView, dx, dy);
+                progressBar.setVisibility(View.VISIBLE);
+                loadGIFs(searchMenu.getText().toString());
             }
         });
 
-        loadMoreGIFs();
+        RxTextView.textChanges(searchMenu)
+                .debounce(1, TimeUnit.SECONDS)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(textChanged -> {
+                    offset = 0;
+                    gifAdapter.removeAll();
+                    loadGIFs(searchMenu.getText().toString());
+                });
     }
 
-    public static void hideKeyboard(Activity activity, View view) {
-        InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
-        //If no view currently has focus, create a new one, just so we can grab a window token from it
-        if (view == null) {
-            view = new View(activity);
-        }
-        assert imm != null;
-        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+    @Override
+    public void onRefresh() {
+        offset = 0;
+        gifAdapter.removeAll();
+        loadGIFs(searchMenu.getText().toString());
     }
 
-    private void loadMoreGIFs() {
-        Call<GiphyModel> call = GiphyApp.app().service().getTrendingGIFs(Constants.API_KEY, GIFS_LIMIT, offset);
+    private void loadGIFs(String search) {
+        if (!search.equals(""))
+            call = GiphyApp.app().service().searchGIFs(Constants.API_KEY, search, GIFS_LIMIT, offset); //Search GIFs if user typed something
+        else
+            call = GiphyApp.app().service().getTrendingGIFs(Constants.API_KEY, GIFS_LIMIT, offset); //Trending GIFs
+
         call.enqueue(new Callback<GiphyModel>() {
             @Override
             public void onResponse(@NonNull Call<GiphyModel> call, @NonNull Response<GiphyModel> response) {
                 if (response.isSuccessful()) {
-                    Log.i(TAG, "response Trending GIFs: " + new Gson().toJson(response.body()));
-                    progressBar.setVisibility(View.GONE);
-//                    gifAdapter.removeLoadingFooter();
-                    isLoading = false;
+                    Log.i(TAG, "response GIFs: " + new Gson().toJson(response.body()));
 
                     giphyModel = response.body();
                     if (giphyModel != null) {
+                        swipeRefreshLayout.setVisibility(View.VISIBLE);
+                        swipeRefreshLayout.setRefreshing(false);
+
+                        if (giphyModel.getData().size() < GIFS_LIMIT) {
+                            return;
+                        }
+                        if (giphyModel.getData().isEmpty()) {
+                            noGifs.setVisibility(View.VISIBLE);
+                        }
+
                         gifAdapter.addAll(giphyModel.getData());
                         offset += giphyModel.getData().size();
-
-                        if (giphyModel.getData().size() != GIFS_LIMIT) isLastPage = true;
-//                        else gifAdapter.addLoadingFooter();
+                        progressBar.setVisibility(View.GONE);
                     }
                 } else {
                     APIUtils.getErrorMessage(response.errorBody());
@@ -170,5 +152,33 @@ public class MainActivity extends AppCompatActivity {
                 APIUtils.onFailureHandling(t);
             }
         });
+    }
+
+    private void setupUI(View view) {
+
+        if (!(view instanceof EditText)) {
+            view.setOnTouchListener(new View.OnTouchListener() {
+                public boolean onTouch(View v, MotionEvent event) {
+                    hideKeyboard(MainActivity.this, view);
+                    return false;
+                }
+            });
+        }
+
+        if (view instanceof ViewGroup) {
+            for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                View innerView = ((ViewGroup) view).getChildAt(i);
+                setupUI(innerView);
+            }
+        }
+    }
+
+    private void hideKeyboard(Activity activity, View view) {
+        InputMethodManager imm = (InputMethodManager) activity.getSystemService(Activity.INPUT_METHOD_SERVICE);
+        if (view == null) {
+            view = new View(activity);
+        }
+        assert imm != null;
+        imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
 }
