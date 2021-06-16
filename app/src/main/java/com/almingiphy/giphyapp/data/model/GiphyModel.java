@@ -3,6 +3,7 @@ package com.almingiphy.giphyapp.data.model;
 import java.io.Serializable;
 import java.util.List;
 
+import com.almingiphy.giphyapp.activities.MainActivity;
 import com.almingiphy.giphyapp.data.model.data.Data;
 import com.almingiphy.giphyapp.data.model.meta.Meta;
 import com.almingiphy.giphyapp.data.model.pagination.Pagination;
@@ -44,5 +45,4 @@ public class GiphyModel implements Serializable {
     public void setMeta(Meta meta) {
         this.meta = meta;
     }
-
 }

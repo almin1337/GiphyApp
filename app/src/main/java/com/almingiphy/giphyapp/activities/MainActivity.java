@@ -48,7 +48,7 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
     private TextView noGifs;
     private EditText searchMenu;
     private ProgressBar progressBar;
-    private Integer offset = 0;
+    private Integer offset = 0, oldOffset = -1;
     private Call<GiphyModel> call;
 
     public static Intent createIntent(Context context) {
@@ -102,6 +102,7 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(textChanged -> {
                     offset = 0;
+                    oldOffset = -1;
                     gifAdapter.removeAll();
                     loadGIFs(searchMenu.getText().toString());
                 });
@@ -110,48 +111,60 @@ public class MainActivity extends AppCompatActivity implements SwipeRefreshLayou
     @Override
     public void onRefresh() {
         offset = 0;
+        oldOffset = -1;
         gifAdapter.removeAll();
         loadGIFs(searchMenu.getText().toString());
     }
 
     private void loadGIFs(String search) {
-        if (!search.equals(""))
-            call = GiphyApp.app().service().searchGIFs(Constants.API_KEY, search, GIFS_LIMIT, offset); //Search GIFs if user typed something
-        else
-            call = GiphyApp.app().service().getTrendingGIFs(Constants.API_KEY, GIFS_LIMIT, offset); //Trending GIFs
 
-        call.enqueue(new Callback<GiphyModel>() {
-            @Override
-            public void onResponse(@NonNull Call<GiphyModel> call, @NonNull Response<GiphyModel> response) {
-                if (response.isSuccessful()) {
-                    Log.i(TAG, "response GIFs: " + new Gson().toJson(response.body()));
+        if (!oldOffset.equals(offset)) {
+            oldOffset = offset;
 
-                    giphyModel = response.body();
-                    if (giphyModel != null) {
-                        swipeRefreshLayout.setVisibility(View.VISIBLE);
-                        swipeRefreshLayout.setRefreshing(false);
+            if (!search.equals(""))
+                call = GiphyApp.app().service().searchGIFs(Constants.API_KEY, search, GIFS_LIMIT, offset); //Search GIFs if user typed something
+            else
+                call = GiphyApp.app().service().getTrendingGIFs(Constants.API_KEY, GIFS_LIMIT, offset); //Trending GIFs
 
-                        if (giphyModel.getData().isEmpty() && offset == 0)
-                            noGifs.setVisibility(View.VISIBLE);
-                        else
-                            noGifs.setVisibility(View.GONE);
+            call.enqueue(new Callback<GiphyModel>() {
+                @Override
+                public void onResponse(@NonNull Call<GiphyModel> call, @NonNull Response<GiphyModel> response) {
+                    if (response.isSuccessful()) {
+                        Log.i(TAG, "response GIFs: " + new Gson().toJson(response.body()));
 
-                        if (giphyModel.getData().size() < GIFS_LIMIT) return;
+                        giphyModel = response.body();
+                        if (giphyModel != null) {
+                            swipeRefreshLayout.setVisibility(View.VISIBLE);
+                            swipeRefreshLayout.setRefreshing(false);
 
-                        gifAdapter.addAll(giphyModel.getData());
-                        offset += giphyModel.getData().size();
-                        progressBar.setVisibility(View.GONE);
+                            if (giphyModel.getData().isEmpty() && offset == 0)
+                                noGifs.setVisibility(View.VISIBLE);
+                            else
+                                noGifs.setVisibility(View.GONE);
+
+                            Log.i("size: ", String.valueOf(giphyModel.getData().size()));
+
+                            if (giphyModel.getData().size() < GIFS_LIMIT && offset != 0) {
+                                offset = 0;
+                                oldOffset = -1;
+                                return;
+                            }
+
+                            gifAdapter.addAll(giphyModel.getData());
+                            offset += giphyModel.getData().size();
+                            progressBar.setVisibility(View.GONE);
+                        }
+                    } else {
+                        APIUtils.getErrorMessage(response.errorBody());
                     }
-                } else {
-                    APIUtils.getErrorMessage(response.errorBody());
                 }
-            }
 
-            @Override
-            public void onFailure(@NonNull Call<GiphyModel> call, @NonNull Throwable t) {
-                APIUtils.onFailureHandling(t);
-            }
-        });
+                @Override
+                public void onFailure(@NonNull Call<GiphyModel> call, @NonNull Throwable t) {
+                    APIUtils.onFailureHandling(t);
+                }
+            });
+        }
     }
 
     private void setupUI(View view) {
